@@ -1,5 +1,3 @@
-import Distribution.Helper
-import System.Environment.Extra (lookupEnv)
 import System.Posix.Env (setEnv)
 import System.Process
 import System.Exit
@@ -17,6 +15,7 @@ import Control.Arrow
 import Control.Monad
 import Prelude
 
+import CabalHelper.Compiletime.Compat.Environment
 import CabalHelper.Compiletime.Compat.Version
 import CabalHelper.Compiletime.Compile
 import CabalHelper.Shared.Common
@@ -37,8 +36,6 @@ main :: IO ()
 main = do
   flip (setEnv "HOME") True =<< fromMaybe "/tmp" <$> lookupEnv "TMPDIR"
   _ <- rawSystem "cabal" ["update"]
-
-  writeAutogenFiles' $ defaultQueryEnv "." "./dist"
 
   let parseVer' "HEAD" = Left HEAD
       parseVer' v      = Right $ parseVer v
@@ -126,7 +123,6 @@ data HEAD = HEAD deriving (Eq, Show)
 
 compilePrivatePkgDb :: Either HEAD Version -> IO (Either ExitCode FilePath)
 compilePrivatePkgDb (Left HEAD) = do
-    _ <- rawSystem "rm" [ "-r", "/tmp/.ghc-mod" ]
     res <- (Right <$> installCabalHEAD defaultOptions { verbose = True })
              `E.catch` \(SomeException ex) -> return $ Left $
                  "ERROR: Installing cabal HEAD failed: " ++ show ex
@@ -137,17 +133,16 @@ compilePrivatePkgDb (Left HEAD) = do
       Right (db, commit) ->
           compileWithPkg (Just db) (Left commit)
 compilePrivatePkgDb (Right cabalVer) = do
-    _ <- rawSystem "rm" [ "-r", "/tmp/.ghc-mod" ]
     db <- installCabal defaultOptions { verbose = True } cabalVer `E.catch`
         \(SomeException _) -> do
-            errorInstallCabal cabalVer "dist"
+            errorInstallCabal cabalVer "/does-not-exist"
     compileWithPkg (Just db) (Right cabalVer)
 
 compileWithPkg :: Maybe FilePath
                -> Either String Version
                -> IO (Either ExitCode FilePath)
 compileWithPkg mdb ver =
-    compile "dist" defaultOptions { verbose = True } $
+    compile "/does-not-exist" defaultOptions { verbose = True } $
       Compile Nothing mdb ver [cabalPkgId ver]
 
 cabalPkgId :: Either String Version -> String
